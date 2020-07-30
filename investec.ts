@@ -1,5 +1,6 @@
 import * as colors from "https://deno.land/std/fmt/colors.ts";
 import { Table } from "https://deno.land/x/tbl/mod.ts";
+import InvestecOpenAPI from "https://raw.githubusercontent.com/barrymichaeldoyle/investec-openapi/master/deno_lib/index.ts";
 
 const BASE_URL = "https://openapi.investec.com";
 const INVESTEC_CLIENT_ID = "INVESTEC_CLIENT_ID";
@@ -12,12 +13,10 @@ const KEY = "🔑";
 class State {
   public clientId? = Deno.env.get(INVESTEC_CLIENT_ID);
   public clientSecret? = Deno.env.get(INVESTEC_CLIENT_SECRET);
-  public accessToken?: string = undefined;
-  public accessTokenExpiry = -1;
+  public client?: typeof InvestecOpenAPI = undefined;
   public selectedAccount?: Account = undefined;
   public get isLoggedIn(): boolean {
-    return this.accessToken !== undefined &&
-      (this.accessTokenExpiry > Date.now());
+    return this.client !== undefined;
   }
 }
 
@@ -130,98 +129,6 @@ async function prompt(state: State): Promise<string[]> {
   return (await readLineFromConsole()).split(" ");
 }
 
-function basicAuthToken(state: State) {
-  return btoa(`${state.clientId}:${state.clientSecret}`);
-}
-
-async function fetchAccessToken(
-  authToken: string,
-): Promise<FetchAccessTokenResponse | undefined> {
-  console.log("Logging in...");
-
-  const res = await fetch(BASE_URL + "/identity/v2/oauth2/token", {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${authToken}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: "grant_type=client_credentials&scope=accounts",
-  });
-
-  if (res.ok) {
-    return await res.json() as FetchAccessTokenResponse;
-  } else {
-    return undefined;
-  }
-}
-
-async function fetchAccounts(
-  state: State,
-): Promise<FetchAccountsResponse | undefined> {
-  if (!state.isLoggedIn) {
-    await login(state);
-  }
-
-  const res = await fetch(BASE_URL + "/za/pb/v1/accounts", {
-    headers: {
-      Authorization: `Bearer ${state.accessToken}`,
-      "Accept": "application/json",
-    },
-  });
-
-  if (res.ok) {
-    return await res.json() as FetchAccountsResponse;
-  } else {
-    return undefined;
-  }
-}
-
-async function fetchAccountTransactions(
-  state: State,
-  accountId: string,
-): Promise<FetchAccountTransactionsResponse | undefined> {
-  if (!state.isLoggedIn) {
-    await login(state);
-  }
-  const res = await fetch(
-    BASE_URL + `/za/pb/v1/accounts/${accountId}/transactions`,
-    {
-      headers: {
-        Authorization: `Bearer ${state.accessToken}`,
-        "Accept": "application/json",
-      },
-    },
-  );
-  if (res.ok) {
-    return await res.json() as FetchAccountTransactionsResponse;
-  } else {
-    return undefined;
-  }
-}
-
-async function fetchAccountBalance(
-  state: State,
-  accountId: string,
-): Promise<FetchAccountBalanceResponse | undefined> {
-  if (!state.isLoggedIn) {
-    await login(state);
-  }
-  const res = await fetch(
-    BASE_URL + `/za/pb/v1/accounts/${accountId}/balance`,
-    {
-      headers: {
-        Authorization: `Bearer ${state.accessToken}`,
-        "Accept": "application/json",
-      },
-    },
-  );
-  if (res.ok) {
-    return await res.json() as FetchAccountBalanceResponse;
-  } else {
-    return undefined;
-  }
-}
-
 async function login(state: State, resetClientCredentials = false) {
   if (
     state.clientId == undefined ||
@@ -232,21 +139,16 @@ async function login(state: State, resetClientCredentials = false) {
     state.clientId = await getInput(`Enter Client ID ${KEY} `);
     state.clientSecret = await getInput(`Enter Client Secret ${KEY} `);
   }
-  const tokenResponse = await fetchAccessToken(
-    basicAuthToken(state),
-  );
-  if (tokenResponse !== undefined) {
-    state.accessToken = tokenResponse.access_token;
-    state.accessTokenExpiry = (tokenResponse.expires_in * 1000) + Date.now();
-    console.log("Successfully logged in");
-  } else {
-    console.log("Error logging in");
-  }
+  console.log("Successfully logged in");
+  InvestecOpenAPI.configure({
+    clientId: state.clientId,
+    secret: state.clientSecret,
+  });
+  state.client = InvestecOpenAPI;
 }
 
 async function logout(state: State) {
-  state.accessToken = undefined;
-  state.accessTokenExpiry = -1;
+  state.client = undefined;
 }
 
 async function getAccounts(state: State) {
@@ -254,7 +156,7 @@ async function getAccounts(state: State) {
     await login(state);
   }
 
-  const result = await fetchAccounts(state);
+  const result = await InvestecOpenAPI.getAccounts();
   if (result) {
     const accounts = result.data.accounts;
     const accountRows: AccountRow[] = [];
@@ -326,10 +228,9 @@ async function getTransactionsForSelectedAccount(state: State) {
     }
   }
 
-  const result = await fetchAccountTransactions(
-    state,
-    state.selectedAccount.accountId,
-  );
+  const result = await InvestecOpenAPI.getAccountTransactions({
+    accountId: state.selectedAccount.accountId,
+  });
   if (result) {
     const txs = result.data.transactions;
     const txRows: TransactionRow[] = [];
@@ -377,10 +278,9 @@ async function getBalanceForSelectedAccount(state: State) {
     }
   }
 
-  const balance = await fetchAccountBalance(
-    state,
-    state.selectedAccount.accountId,
-  );
+  const balance = await InvestecOpenAPI.getAccountBalance({
+    accountId: state.selectedAccount.accountId,
+  });
   if (balance) {
     console.log(
       `Current Balance: ${balance.data.currency} ${balance.data.currentBalance}`,
