@@ -139,12 +139,16 @@ async function login(state: State, resetClientCredentials = false) {
     state.clientId = await getInput(`Enter Client ID ${KEY} `);
     state.clientSecret = await getInput(`Enter Client Secret ${KEY} `);
   }
-  console.log("Successfully logged in");
-  InvestecOpenAPI.configure({
+  state.client = InvestecOpenAPI;
+  state.client.configure({
     clientId: state.clientId,
     secret: state.clientSecret,
+    errorCallback: (err) => {
+      console.log(colors.red("Error logging in!"))
+      state.client = undefined
+    }
   });
-  state.client = InvestecOpenAPI;
+  await InvestecOpenAPI.getAccounts(); 
 }
 
 async function logout(state: State) {
