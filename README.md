@@ -10,7 +10,7 @@ Built with [Deno](https://deno.land/).
 Assuming you already have deno [installed](https://deno.land/#installation).
 
 ```sh
-deno install --allow-net=openapi.investec.com --allow-env https://raw.githubusercontent.com/adrianhopebailie/investec/master/investec.md
+deno install --allow-net=openapi.investec.com --allow-env https://raw.githubusercontent.com/adrianhopebailie/investec/master/investec.ts
 ```
 
 ## Usage
@@ -28,6 +28,12 @@ To run the application simply run:
 ```sh
 $ investec
 ```
+
+> If that doesn't work it's possible that your Deno `bin` folder is not in 
+> your path (see the error that would have been logged when you did the install).
+> Make sure you have something like `export PATH=$HOME/.deno/bin:$PATH` in your
+> shell config.
+
 
 You can type `help` to get a list of available commands or `quit` to... quit.
 
