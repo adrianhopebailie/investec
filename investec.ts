@@ -8,18 +8,7 @@ const ICON = "💸";
 const LOCKED = "🔐";
 const UNLOCKED = "🔓";
 const KEY = "🔑";
-
-class State {
-  public clientId? = Deno.env.get(INVESTEC_CLIENT_ID);
-  public clientSecret? = Deno.env.get(INVESTEC_CLIENT_SECRET);
-  public accessToken?: string = undefined;
-  public accessTokenExpiry = -1;
-  public selectedAccount?: Account = undefined;
-  public get isLoggedIn(): boolean {
-    return this.accessToken !== undefined &&
-      (this.accessTokenExpiry > Date.now());
-  }
-}
+const MAGNIFYING_GLASS = "🔍";
 
 interface FetchAccessTokenResponse {
   access_token: string;
@@ -99,7 +88,6 @@ interface TransactionRow {
   "Status": string;
   "Description": string;
   "Card Number": string;
-  "Value Date": string;
   "Amount": string;
 }
 
@@ -114,23 +102,53 @@ async function getInput(message: string = ""): Promise<string> {
   return await readLineFromConsole();
 }
 
-async function prompt(state: State): Promise<string[]> {
-  const account = (state.selectedAccount)
-    ? ` ${
-      colors.green(state.selectedAccount.accountNumber)
-    }/${state.selectedAccount.accountName}/${
-      colors.green(state.selectedAccount.productName)
-    } `
-    : " ";
+function accountPrompt() {
+  if (!state.selectedAccount) {
+    return " ";
+  }
+  const accountNumber = maskAccountNumber(state.selectedAccount);
+  return ` ${
+    colors.green(accountNumber)
+  }/${state.selectedAccount.accountName}/${
+    colors.green(state.selectedAccount.productName)
+  } `;
+}
+
+function maskAccountNumber(account: Account) {
+  if (!state.isPrivate) return account.accountNumber;
+  return account.accountNumber.slice(0, 2) + "xxxxxx" +
+    account.accountNumber.slice(-4);
+}
+
+function maskAmount(amount: string) {
+  return amount.slice(0, 2) + "******" + amount.slice(-4);
+}
+
+const state = {
+  clientId: Deno.env.get(INVESTEC_CLIENT_ID),
+  clientSecret: Deno.env.get(INVESTEC_CLIENT_SECRET),
+  isPrivate: true,
+  accessToken: <string | undefined> undefined,
+  accessTokenExpiry: -1,
+  selectedAccount: <Account | undefined> undefined,
+  get isLoggedIn(): boolean {
+    return this.accessToken !== undefined &&
+      (this.accessTokenExpiry > Date.now());
+  },
+};
+
+async function prompt(): Promise<string[]> {
+  const lock = (state.isLoggedIn) ? LOCKED : UNLOCKED;
+  const isPrivate = (state.isPrivate) ? "" : " " + MAGNIFYING_GLASS;
   await Deno.stdout.write(
     new TextEncoder().encode(
-      `${ICON}${account}${(state.isLoggedIn) ? LOCKED : UNLOCKED} > `,
+      `${ICON}${accountPrompt()}${lock}${isPrivate} > `,
     ),
   );
   return (await readLineFromConsole()).split(" ");
 }
 
-function basicAuthToken(state: State) {
+function basicAuthToken() {
   return btoa(`${state.clientId}:${state.clientSecret}`);
 }
 
@@ -155,11 +173,9 @@ async function fetchAccessToken(
   }
 }
 
-async function fetchAccounts(
-  state: State,
-): Promise<FetchAccountsResponse | undefined> {
+async function fetchAccounts(): Promise<FetchAccountsResponse | undefined> {
   if (!state.isLoggedIn) {
-    await login(state);
+    await login();
   }
 
   const res = await fetch(BASE_URL + "/za/pb/v1/accounts", {
@@ -177,11 +193,10 @@ async function fetchAccounts(
 }
 
 async function fetchAccountTransactions(
-  state: State,
   accountId: string,
 ): Promise<FetchAccountTransactionsResponse | undefined> {
   if (!state.isLoggedIn) {
-    await login(state);
+    await login();
   }
   const res = await fetch(
     BASE_URL + `/za/pb/v1/accounts/${accountId}/transactions`,
@@ -200,11 +215,10 @@ async function fetchAccountTransactions(
 }
 
 async function fetchAccountBalance(
-  state: State,
   accountId: string,
 ): Promise<FetchAccountBalanceResponse | undefined> {
   if (!state.isLoggedIn) {
-    await login(state);
+    await login();
   }
   const res = await fetch(
     BASE_URL + `/za/pb/v1/accounts/${accountId}/balance`,
@@ -222,7 +236,7 @@ async function fetchAccountBalance(
   }
 }
 
-async function login(state: State, resetClientCredentials = false) {
+async function login(resetClientCredentials = false) {
   if (
     state.clientId == undefined ||
     state.clientSecret == undefined ||
@@ -233,7 +247,7 @@ async function login(state: State, resetClientCredentials = false) {
     state.clientSecret = await getInput(`Enter Client Secret ${KEY} `);
   }
   const tokenResponse = await fetchAccessToken(
-    basicAuthToken(state),
+    basicAuthToken(),
   );
   if (tokenResponse !== undefined) {
     state.accessToken = tokenResponse.access_token;
@@ -244,24 +258,24 @@ async function login(state: State, resetClientCredentials = false) {
   }
 }
 
-async function logout(state: State) {
+async function logout() {
   state.accessToken = undefined;
   state.accessTokenExpiry = -1;
 }
 
-async function getAccounts(state: State) {
+async function getAccounts() {
   if (!state.isLoggedIn) {
-    await login(state);
+    await login();
   }
 
-  const result = await fetchAccounts(state);
+  const result = await fetchAccounts();
   if (result) {
     const accounts = result.data.accounts;
     const accountRows: AccountRow[] = [];
     accounts.map((account, i) => {
       accountRows.push({
         " ": i.toString(),
-        "Account Number": account.accountNumber,
+        "Account Number": maskAccountNumber(account),
         "Account Name": account.accountName,
         "Product": account.productName,
       });
@@ -313,13 +327,13 @@ async function getAccounts(state: State) {
   }
 }
 
-async function getTransactionsForSelectedAccount(state: State) {
+async function getTransactionsForSelectedAccount() {
   if (!state.isLoggedIn) {
-    await login(state);
+    await login();
   }
 
   if (!state.selectedAccount) {
-    await getAccounts(state);
+    await getAccounts();
     if (!state.selectedAccount) {
       console.log(colors.red(`No account selected`));
       return;
@@ -327,7 +341,6 @@ async function getTransactionsForSelectedAccount(state: State) {
   }
 
   const result = await fetchAccountTransactions(
-    state,
     state.selectedAccount.accountId,
   );
   if (result) {
@@ -335,16 +348,16 @@ async function getTransactionsForSelectedAccount(state: State) {
     const txRows: TransactionRow[] = [];
     txs.map((tx, i) => {
       txRows.push({
-        "Date": tx.actionDate,
+        "Date": tx.valueDate,
         "Description": tx.description,
         "Amount": "ZAR" +
-          ((tx.type === "DEBIT" ? "-" : "+") + tx.amount.toFixed(2)).padStart(
-            12,
-            " ",
-          ), // TODO: Get currency from balance request
+          ((tx.type === "DEBIT" ? "-" : "+") +
+            (state.isPrivate ? "xxxxx.xx" : tx.amount.toFixed(2))).padStart(
+              12,
+              " ",
+            ), // TODO: Get currency from balance request
         "Status": tx.status,
         "Card Number": tx.cardNumber,
-        "Value Date": tx.valueDate,
       });
     });
     const table = new Table({
@@ -364,13 +377,13 @@ async function getTransactionsForSelectedAccount(state: State) {
   }
 }
 
-async function getBalanceForSelectedAccount(state: State) {
+async function getBalanceForSelectedAccount() {
   if (!state.isLoggedIn) {
-    await login(state);
+    await login();
   }
 
   if (!state.selectedAccount) {
-    await getAccounts(state);
+    await getAccounts();
     if (!state.selectedAccount) {
       console.log(colors.red(`No account selected`));
       return;
@@ -378,7 +391,6 @@ async function getBalanceForSelectedAccount(state: State) {
   }
 
   const balance = await fetchAccountBalance(
-    state,
     state.selectedAccount.accountId,
   );
   if (balance) {
@@ -404,6 +416,10 @@ async function help(error?: string) {
       | --reset 
       |          Clear the client id and secret in memory and prompt for new credentials
 
+  ${colors.yellow("private | pvt")}
+      | Toggle private mode.
+      | (When private mode is on account numbers and amounts are masked)
+
   ${colors.yellow("accounts | accts")}
       | List accounts.
       | (Optionally select an account for further operations)
@@ -426,7 +442,6 @@ async function help(error?: string) {
   }
 }
 
-const state = new State();
 console.log(
   `
 ${colors.yellow("Investec Open Banking REPL")}
@@ -438,31 +453,36 @@ Type 'help' for a list of available commands
 );
 
 while (true) {
-  const input = await prompt(state);
+  const input = await prompt();
   const command = input[0];
   switch (command) {
     case "login":
       const reset = input[1] !== undefined && input[1] === "--reset";
-      await login(state, reset);
+      await login(reset);
       break;
 
     case "logout":
-      await logout(state);
+      await logout();
+      break;
+
+    case "private":
+    case "pvt":
+      state.isPrivate = !state.isPrivate;
       break;
 
     case "accounts":
     case "accts":
-      await getAccounts(state);
+      await getAccounts();
       break;
 
     case "transactions":
     case "txs":
-      await getTransactionsForSelectedAccount(state);
+      await getTransactionsForSelectedAccount();
       break;
 
     case "balance":
     case "bal":
-      await getBalanceForSelectedAccount(state);
+      await getBalanceForSelectedAccount();
       break;
 
     case "quit":
