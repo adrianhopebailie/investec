@@ -120,10 +120,6 @@ function maskAccountNumber(account: Account) {
     account.accountNumber.slice(-4);
 }
 
-function maskAmount(amount: string) {
-  return amount.slice(0, 2) + "******" + amount.slice(-4);
-}
-
 const state = {
   clientId: Deno.env.get(INVESTEC_CLIENT_ID),
   clientSecret: Deno.env.get(INVESTEC_CLIENT_SECRET),
@@ -405,6 +401,10 @@ async function getBalanceForSelectedAccount() {
   }
 }
 
+async function doPaymentFromSelectedAccount() {
+  console.log("Coming soon...")
+}
+
 async function help(error?: string) {
   console.log(`
 
@@ -484,6 +484,11 @@ while (true) {
     case "bal":
       await getBalanceForSelectedAccount();
       break;
+
+    case "pay":
+      await doPaymentFromSelectedAccount();
+      break;
+    
 
     case "quit":
       Deno.exit(0);
