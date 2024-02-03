@@ -47,10 +47,10 @@ The provided credentials will be kept in memory as long as the application is
 running.
 
 To skip typing in the login credentials these can be provided as environment
-variables called `INVESTEC_CLIENT_ID` and `INVESTEC_CLIENT_SECRET`.
+variables called `INVESTEC_CLIENT_ID`, `INVESTEC_CLIENT_SECRET` and `INVESTEC_API_KEY`.
 
 ```sh
-$ INVESTEC_CLIENT_ID=uytfqwed76r5quwdtfo86twef INVESTEC_CLIENT_SECRET=98uy978y23ry8 investec
+$ INVESTEC_CLIENT_ID=uytfqwed76r5quwdtfo86twef INVESTEC_CLIENT_SECRET=98uy978y23ry8 INVESTECT_API_KEY=3OTFDRUU5NkRBODNGNTExCkJFMw== investec
 ```
 
 ### Accounts

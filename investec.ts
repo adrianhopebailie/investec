@@ -1,9 +1,11 @@
 import * as colors from "https://deno.land/std/fmt/colors.ts";
 import { Table } from "https://deno.land/x/tbl/mod.ts";
+import { GenericObject } from "https://deno.land/x/tbl@1.0.3/src/render.ts";
 
 const BASE_URL = "https://openapi.investec.com";
 const INVESTEC_CLIENT_ID = "INVESTEC_CLIENT_ID";
 const INVESTEC_CLIENT_SECRET = "INVESTEC_CLIENT_SECRET";
+const INVESTEC_API_KEY = "INESTEC_API_KEY";
 const ICON = "💸";
 const LOCKED = "🔐";
 const UNLOCKED = "🔓";
@@ -31,9 +33,10 @@ interface Transaction {
   status: string;
   description: string;
   cardNumber: string;
-  postingData: string;
+  postingDate: string;
   valueDate: string;
   actionDate: string;
+  transactionDate: string;
   amount: number;
 }
 
@@ -76,14 +79,14 @@ interface FetchAccountBalanceResponse {
   };
 }
 
-interface AccountRow {
+interface AccountRow extends GenericObject {
   " ": string;
   "Account Name": string;
   "Account Number": string;
   "Product": string;
 }
 
-interface TransactionRow {
+interface TransactionRow extends GenericObject {
   "Date": string;
   "Status": string;
   "Description": string;
@@ -97,7 +100,7 @@ async function readLineFromConsole(): Promise<string> {
   return new TextDecoder().decode(buf.subarray(0, n)).trim();
 }
 
-async function getInput(message: string = ""): Promise<string> {
+async function getInput(message = ""): Promise<string> {
   await Deno.stdout.write(new TextEncoder().encode(message + ": "));
   return await readLineFromConsole();
 }
@@ -123,6 +126,7 @@ function maskAccountNumber(account: Account) {
 const state = {
   clientId: Deno.env.get(INVESTEC_CLIENT_ID),
   clientSecret: Deno.env.get(INVESTEC_CLIENT_SECRET),
+  apiKey: Deno.env.get(INVESTEC_API_KEY),
   isPrivate: true,
   accessToken: <string | undefined> undefined,
   accessTokenExpiry: -1,
@@ -158,6 +162,7 @@ async function fetchAccessToken(
     headers: {
       Authorization: `Basic ${authToken}`,
       "Content-Type": "application/x-www-form-urlencoded",
+      "x-api-key": state.apiKey ?? "",
     },
     body: "grant_type=client_credentials&scope=accounts",
   });
@@ -236,11 +241,13 @@ async function login(resetClientCredentials = false) {
   if (
     state.clientId == undefined ||
     state.clientSecret == undefined ||
+    state.apiKey == undefined ||
     resetClientCredentials
   ) {
     //TODO: If resetClientCredentials and env vars are set then fallback to these
     state.clientId = await getInput(`Enter Client ID ${KEY} `);
     state.clientSecret = await getInput(`Enter Client Secret ${KEY} `);
+    state.apiKey = await getInput(`Enter API Key ${KEY} `);
   }
   const tokenResponse = await fetchAccessToken(
     basicAuthToken(),
@@ -254,7 +261,7 @@ async function login(resetClientCredentials = false) {
   }
 }
 
-async function logout() {
+function logout() {
   state.accessToken = undefined;
   state.accessTokenExpiry = -1;
 }
@@ -342,9 +349,9 @@ async function getTransactionsForSelectedAccount() {
   if (result) {
     const txs = result.data.transactions;
     const txRows: TransactionRow[] = [];
-    txs.map((tx, i) => {
+    txs.map((tx) => {
       txRows.push({
-        "Date": tx.valueDate,
+        "Date": tx.transactionDate,
         "Description": tx.description,
         "Amount": "ZAR" +
           ((tx.type === "DEBIT" ? "-" : "+") +
@@ -363,7 +370,6 @@ async function getTransactionsForSelectedAccount() {
         "Amount",
         "Status",
         "Card Number",
-        "Value Date",
       ],
     });
     table.fromObjects(txRows);
@@ -401,11 +407,11 @@ async function getBalanceForSelectedAccount() {
   }
 }
 
-async function doPaymentFromSelectedAccount() {
+function doPaymentFromSelectedAccount() {
   console.log("Coming soon...")
 }
 
-async function help(error?: string) {
+function help(error?: string) {
   console.log(`
 
 
@@ -456,11 +462,11 @@ while (true) {
   const input = await prompt();
   const command = input[0];
   switch (command) {
-    case "login":
+    case "login": {
       const reset = input[1] !== undefined && input[1] === "--reset";
       await login(reset);
       break;
-
+    }
     case "logout":
       await logout();
       break;
@@ -489,9 +495,9 @@ while (true) {
       await doPaymentFromSelectedAccount();
       break;
     
-
     case "quit":
       Deno.exit(0);
+      break
 
     case "help":
       await help();
